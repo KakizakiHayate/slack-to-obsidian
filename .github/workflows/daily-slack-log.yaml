@@ -1,20 +1,14 @@
-name: Daily Slack Log to Obsidian
+name: Export Slack Log to Private Obsidian Repo
 
 on:
-  # schedule:
-  #   - cron: '0 14 * * *'  # JST 23:00 に実行（UTCで14:00）
   workflow_dispatch:
 
 jobs:
-  run-script:
+  export-log:
     runs-on: ubuntu-latest
 
-    env:
-      SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-      SLACK_CHANNEL_IDS: ${{ secrets.SLACK_CHANNEL_IDS }}
-
     steps:
-      - name: Checkout repository
+      - name: Checkout this repository
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -27,19 +21,30 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Decode PAT and set Git credentials
+        run: |
+          echo "${{ secrets.PRIVATE_REPO_PAT_BASE64 }}" | base64 -d > pat.txt
+          echo "https://$(cat pat.txt):x-oauth-basic@github.com" > ~/.git-credentials
+          git config --global credential.helper store
+
+      - name: Clone private repo
+        run: |
+          git clone https://github.com/${{ secrets.PRIVATE_REPO_SLUG }}.git private-vault
+
       - name: Run Slack log script
         run: |
+          mkdir -p private-vault/logs
           python slack-to-obsidian.py
+          cp logs/*.md private-vault/logs/
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_IDS: ${{ secrets.SLACK_CHANNEL_IDS }}
 
-      - name: Commit and Push logs
+      - name: Commit and Push to private repo
         run: |
+          cd private-vault
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add logs/
           git commit -m "Add Slack logs for $(date '+%Y-%m-%d')" || echo "No changes to commit"
           git push
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Done
-        run: echo "Slack log updated and pushed to GitHub"
