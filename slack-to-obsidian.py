@@ -13,10 +13,11 @@ UTC = timezone.utc
 load_dotenv()
 
 # SlackチャンネルID一覧
-CHANNEL_IDS = [
-    "C07D72VLD54", "C07F691AE9Z", "C06NDUSU68Y",
-    "C06MEPPRXJN", "C05218NK8TB", "C01SQH2UT9C"
-]
+channel_ids_str = os.getenv("SLACK_CHANNEL_IDS")
+if not channel_ids_str:
+    raise ValueError("SLACK_CHANNEL_IDS not found in environment variables")
+
+CHANNEL_IDS = [cid.strip() for cid in channel_ids_str.split(",")]
 
 # 保存ディレクトリ
 OUTPUT_DIR = Path("logs")
