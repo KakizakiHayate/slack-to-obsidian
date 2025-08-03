@@ -1,11 +1,18 @@
 import os
 import base64
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
+from dotenv import load_dotenv
 
-# SlackチャンネルID一覧（カンマ区切り）
+# タイムゾーン定義
+JST = timezone(timedelta(hours=9))
+UTC = timezone.utc
+
+load_dotenv()
+
+# SlackチャンネルID一覧
 CHANNEL_IDS = [
     "C07D72VLD54", "C07F691AE9Z", "C06NDUSU68Y",
     "C06MEPPRXJN", "C05218NK8TB", "C01SQH2UT9C"
@@ -15,32 +22,31 @@ CHANNEL_IDS = [
 OUTPUT_DIR = Path("logs")
 OUTPUT_DIR.mkdir(exist_ok=True)
 
-# Botトークンを環境変数から読み取り
+# Botトークン読み込み
 token_encoded = os.getenv("SLACK_BOT_TOKEN")
 if not token_encoded:
-    raise ValueError("SLACK_BOT_TOKEN not found in environment variables")
-
+    raise ValueError("SLACK_BOT_TOKEN not found")
 SLACK_TOKEN = base64.b64decode(token_encoded).decode("utf-8")
 client = WebClient(token=SLACK_TOKEN)
 
-# 今日の日付を取得
-# 一時的にデバッグしたい時は、以下をコメントアウトする
-today = datetime.utcnow() + timedelta(hours=9)  # JST
-log_date_str = today.strftime("%Y-%m-%d")
-start_of_day = datetime(today.year, today.month, today.day, 0, 0, 0) - timedelta(hours=9)
-end_of_day = start_of_day + timedelta(days=1)
+# 日付指定（JST基準）
+today_jst = datetime(2025, 7, 31, tzinfo=JST)  # ← 任意に変更
+log_date_str = today_jst.strftime("%Y-%m-%d")
 
-start_ts = start_of_day.timestamp()
-end_ts = end_of_day.timestamp()
+# JSTの0:00〜24:00 → UTCタイムスタンプに変換
+start_jst = datetime(today_jst.year, today_jst.month, today_jst.day, 0, 0, 0, tzinfo=JST)
+end_jst = start_jst + timedelta(days=1)
+start_ts = start_jst.astimezone(UTC).timestamp()
+end_ts = end_jst.astimezone(UTC).timestamp()
 
-# メッセージをMarkdownに変換
-def format_message(ts, user, text):
-    time_str = datetime.fromtimestamp(float(ts) + 9 * 3600).strftime("%H:%M")
-    return f"- **{time_str}** [@{user}]: {text.strip()}"
+# メッセージをMarkdown形式に変換
+def format_message(ts, user, text, indent_level=0):
+    time_str = datetime.fromtimestamp(float(ts), JST).strftime("%H:%M")
+    indent = "    " * indent_level
+    return f"{indent}- **{time_str}** [@{user}]: {text.strip()}"
 
-# ユーザーID → ユーザー名の変換キャッシュ
+# ユーザーIDからユーザー名を取得
 user_cache = {}
-
 def get_user_name(user_id):
     if user_id in user_cache:
         return user_cache[user_id]
@@ -52,7 +58,26 @@ def get_user_name(user_id):
     except:
         return user_id
 
-# チャンネルごとにメッセージ取得
+# スレッドの返信を取得
+def fetch_thread_replies(channel_id, thread_ts):
+    replies = []
+    try:
+        thread_response = client.conversations_replies(
+            channel=channel_id,
+            ts=thread_ts,
+            limit=50
+        )
+        for reply in thread_response["messages"][1:]:  # 最初は親なので除外
+            if "subtype" in reply:
+                continue
+            user = get_user_name(reply.get("user", "unknown"))
+            text = reply.get("text", "").replace("\n", " ")
+            replies.append(format_message(reply["ts"], user, text, indent_level=1))
+    except:
+        pass
+    return replies
+
+# チャンネルごとに取得
 md_lines = [f"# Slackログ（{log_date_str}）\n"]
 for channel_id in CHANNEL_IDS:
     try:
@@ -70,10 +95,17 @@ for channel_id in CHANNEL_IDS:
 
         for message in reversed(result["messages"]):
             if "subtype" in message:
-                continue  # ボットメッセージなどは除外
+                continue
+
             user = get_user_name(message.get("user", "unknown"))
             text = message.get("text", "").replace("\n", " ")
-            md_lines.append(format_message(message["ts"], user, text))
+            formatted = format_message(message["ts"], user, text)
+            md_lines.append(formatted)
+
+            # スレッドがある場合、返信を取得
+            if "thread_ts" in message and message["thread_ts"] == message["ts"]:
+                replies = fetch_thread_replies(channel_id, message["ts"])
+                md_lines.extend(replies)
 
     except SlackApiError as e:
         md_lines.append(f"\n> Error fetching messages for channel {channel_id}: {e}\n")
