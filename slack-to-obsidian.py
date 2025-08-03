@@ -30,8 +30,17 @@ if not token_encoded:
 SLACK_TOKEN = base64.b64decode(token_encoded).decode("utf-8")
 client = WebClient(token=SLACK_TOKEN)
 
-# 日付指定（JST基準）
-today_jst = datetime(2025, 7, 31, tzinfo=JST)  # ← 任意に変更
+# 実行日（JST）の前日を対象にする
+yesterday_jst_date = datetime.now(JST).date() - timedelta(days=1)
+today_jst = datetime(
+    year=yesterday_jst_date.year,
+    month=yesterday_jst_date.month,
+    day=yesterday_jst_date.day,
+    tzinfo=JST,
+)
+
+# today_jst = datetime(2025, 7, 31, tzinfo=JST)  # ← 任意に変更
+
 log_date_str = today_jst.strftime("%Y-%m-%d")
 
 # JSTの0:00〜24:00 → UTCタイムスタンプに変換

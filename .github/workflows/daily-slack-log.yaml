@@ -1,6 +1,8 @@
 name: Daily Slack Log to Obsidian
 
 on:
+  schedule:
+    - cron: '30 15 * * *'
   workflow_dispatch:  # 手動実行（スケジュールは後で追加可）
 
 jobs:
