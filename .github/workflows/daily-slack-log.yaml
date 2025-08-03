@@ -1,0 +1,42 @@
+name: Daily Slack Log to Obsidian
+
+on:
+#   schedule:
+#     - cron: '0 14 * * *'  # JST 23:00 に実行（UTCで14:00）
+  workflow_dispatch:      # 手動実行も可能
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Slack log script
+        run: |
+          python slack-to-obsidian.py
+
+      - name: Commit and Push logs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add logs/
+          git commit -m "Add Slack logs for $(date '+%Y-%m-%d')" || echo "No changes to commit"
+          git push
+        env:
+          # 認証済みトークンが必要（`GITHUB_TOKEN` は自動で設定されます）
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Done
+        run: echo "Slack log updated and pushed to GitHub"
