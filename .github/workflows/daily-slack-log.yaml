@@ -1,13 +1,17 @@
 name: Daily Slack Log to Obsidian
 
 on:
-#   schedule:
-#     - cron: '0 14 * * *'  # JST 23:00 に実行（UTCで14:00）
-  workflow_dispatch:      # 手動実行も可能
+  # schedule:
+  #   - cron: '0 14 * * *'  # JST 23:00 に実行（UTCで14:00）
+  workflow_dispatch:
 
 jobs:
   run-script:
     runs-on: ubuntu-latest
+
+    env:
+      SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+      SLACK_CHANNEL_IDS: ${{ secrets.SLACK_CHANNEL_IDS }}
 
     steps:
       - name: Checkout repository
@@ -35,7 +39,6 @@ jobs:
           git commit -m "Add Slack logs for $(date '+%Y-%m-%d')" || echo "No changes to commit"
           git push
         env:
-          # 認証済みトークンが必要（`GITHUB_TOKEN` は自動で設定されます）
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Done
